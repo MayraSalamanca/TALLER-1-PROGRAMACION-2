@@ -1,0 +1,144 @@
+package com.sanfrancisco.tasksystem;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
+import javax.persistence.*;
+import lombok.*;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Repository;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import java.util.Optional;
+import io.jsonwebtoken.*;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.context.annotation.Bean;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import java.util.Date;
+import java.security.Key;
+import io.jsonwebtoken.security.Keys;
+import java.util.List;
+
+@SpringBootApplication(exclude = {SecurityAutoConfiguration.class})
+public class TaskManagementApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(TaskManagementApplication.class, args);
+    }
+}
+
+@RestController
+@RequestMapping("/tareas")
+class TareaController {
+    @Autowired
+    private TareaService tareaService;
+
+    @PostMapping("/crear")
+    public Tarea crearTarea(@RequestBody Tarea tarea) {
+        return tareaService.crearTarea(tarea);
+    }
+
+    @GetMapping("/estado/{estado}")
+    public List<Tarea> obtenerTareasPorEstado(@RequestParam Long usuarioId, @PathVariable String estado) {
+        return tareaService.obtenerTareasPorEstado(usuarioId, estado);
+    }
+
+    @GetMapping("/rango-fechas")
+    public List<Tarea> obtenerTareasPorRangoDeFechas(@RequestParam Long usuarioId, @RequestParam Date inicio, @RequestParam Date fin) {
+        return tareaService.obtenerTareasPorRangoDeFechas(usuarioId, inicio, fin);
+    }
+
+    @PutMapping("/editar/{id}")
+    public Tarea editarTarea(@PathVariable Long id, @RequestBody Tarea tarea) {
+        return tareaService.editarTarea(id, tarea);
+    }
+
+    @DeleteMapping("/eliminar/{id}")
+    public String eliminarTarea(@PathVariable Long id) {
+        tareaService.eliminarTarea(id);
+        return "Tarea eliminada exitosamente";
+    }
+}
+
+@Service
+class TareaService {
+    @Autowired
+    private TareaRepository tareaRepository;
+    @Autowired
+    private UsuarioRepository usuarioRepository;
+
+    public List<Tarea> obtenerTareasPorEstado(Long usuarioId, String estado) {
+        Usuario usuario = usuarioRepository.findById(usuarioId).orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+        return tareaRepository.findByUsuarioAndEstado(usuario, estado);
+    }
+
+    public List<Tarea> obtenerTareasPorRangoDeFechas(Long usuarioId, Date inicio, Date fin) {
+        Usuario usuario = usuarioRepository.findById(usuarioId).orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+        return tareaRepository.findByUsuarioAndFechaEntregaBetween(usuario, inicio, fin);
+    }
+
+    public Tarea crearTarea(Tarea tarea) {
+        return tareaRepository.save(tarea);
+    }
+
+    public Tarea editarTarea(Long id, Tarea nuevaTarea) {
+        Tarea tarea = tareaRepository.findById(id).orElseThrow(() -> new RuntimeException("Tarea no encontrada"));
+        tarea.setTitulo(nuevaTarea.getTitulo());
+        tarea.setDescripcion(nuevaTarea.getDescripcion());
+        tarea.setEstado(nuevaTarea.getEstado());
+        tarea.setFechaEntrega(nuevaTarea.getFechaEntrega());
+        return tareaRepository.save(tarea);
+    }
+
+    public void eliminarTarea(Long id) {
+        tareaRepository.deleteById(id);
+    }
+}
+
+@Entity
+@Table(name = "tareas")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+class Tarea {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String titulo;
+
+    @Column(nullable = false)
+    private String descripcion;
+
+    @Column(nullable = false)
+    private String estado; // Pendiente, En progreso, Completada
+
+    @Column(nullable = false)
+    private Date fechaEntrega;
+
+    @ManyToOne
+    @JoinColumn(name = "usuario_id", nullable = false)
+    private Usuario usuario;
+}
+
+@Repository
+interface TareaRepository extends JpaRepository<Tarea, Long> {
+    List<Tarea> findByUsuarioAndEstado(Usuario usuario, String estado);
+    List<Tarea> findByUsuarioAndFechaEntregaBetween(Usuario usuario, Date inicio, Date fin);
+}
